@@ -25,7 +25,7 @@ type CasbinRule struct {
 
 // adapter represents the GCP firestore adapter for policy storage.
 type adapter struct {
-	client    *firestore.Client
+	client     *firestore.Client
 	collection string
 }
 
@@ -38,10 +38,59 @@ func (a *adapter) close() {
 	_ = a.client.Close()
 }
 
-// NewAdapter is the constructor for Adapter. A valid firestore client must be provided.
-func NewAdapter(db *firestore.Client) persist.Adapter {
-	return NewAdapterWithConfig(db, Config{Collection: defaultCollectionName})
+type opt struct {
+	config    Config
+	finalizer bool
 }
+
+type Option func(o *opt)
+
+func WithConfig(c Config) Option {
+	return func(o *opt) {
+		o.config = c
+	}
+}
+
+func WithFinalizer(f bool) Option {
+	return func(o *opt) {
+		o.finalizer = f
+	}
+}
+
+// NewAdapter is the constructor for Adapter. A valid firestore client must be provided.
+//
+// Note
+//
+// With this change, now we can use a singleton firestore client.
+//
+// Example
+//	c := Config{Collection: "someCollection"}
+// 	adapter := NewAdapter(
+//		singleFirestoreClient
+//		WithFinalizer(false),
+//		WithConfig(c),
+//	)
+func NewAdapter(db *firestore.Client, options ...Option) persist.Adapter {
+	option := &opt{Config{Collection: defaultCollectionName}, true}
+
+	for _, o := range options {
+		o(option)
+	}
+
+	config := option.config
+	a := &adapter{db, config.collectionName()}
+
+	if option.finalizer {
+		runtime.SetFinalizer(a, finalizer)
+	}
+
+	return a
+}
+
+// NewAdapter is the constructor for Adapter. A valid firestore client must be provided.
+// func NewAdapter(db *firestore.Client) persist.Adapter {
+// 	return NewAdapterWithConfig(db)
+// }
 
 // NewAdapter is the constructor for Adapter. A valid firestore client must be provided.
 func NewAdapterWithConfig(db *firestore.Client, config Config) persist.Adapter {
